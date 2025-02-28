@@ -436,8 +436,8 @@ classdef EI_pool < handle
                 box off
                 xlabel("Time (s)")
                 xlim([-0.5 pool.T / pool.save_weights_t_period])
-                xticks(0:100.0 / pool.save_weights_t_period:pool.T / pool.save_weights_t_period)
-                xticklabels(0:1000:pool.T)
+                xticks(0:10.0 / pool.save_resource_pools_t_period:pool.T / pool.save_resource_pools_t_period)
+                xticklabels(0:10:pool.T)
                 % yticklabels([0])
                 % yticks([0])
                 % ylim([0 1])
@@ -571,8 +571,8 @@ classdef EI_pool < handle
                 axis xy
                 xlabel("Time (s)")
                 xlim([-0.5 pool.T / pool.save_Hz_t_period])
-                xticks(0:1.0 / pool.save_Hz_t_period:pool.T / pool.save_Hz_t_period)
-                xticklabels(0:pool.T)
+                xticks(0:10.0 / pool.save_resource_pools_t_period:pool.T / pool.save_resource_pools_t_period)
+                xticklabels(0:10:pool.T)
                 ylabel("Excitatory neuron (sorted > 25 Hz)")
                 yticks([]);
                 colormap hot

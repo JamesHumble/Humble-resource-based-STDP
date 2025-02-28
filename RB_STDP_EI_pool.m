@@ -26,12 +26,14 @@ classdef RB_STDP_EI_pool < EI_pool
 
         save_resource_pools_t_period double {mustBeFloat, mustBePositive} = 0.100 % sec
         resource_pools_t (:, :) double {mustBeFloat, mustBeNonnegative} = [] % t, post (excitatory)
-        
+
         non_potentiable_weight_t (:, 1) double {mustBeFloat, mustBeNonnegative} = []
         non_potentiable_required_t (:, 1) double {mustBeFloat, mustBeNonnegative} = []
         non_potentiable_got_t (:, 1) double {mustBeFloat, mustBeNonnegative} = []
         non_potentiable_i uint32 {mustBeNonnegative} = 1
         non_potentiable_N uint32 {mustBeNonnegative} = 20000000
+        non_potentiable_n uint32 {mustBeNonnegative} = 1
+        save_potentiation_N_period double {mustBeFloat, mustBePositive} = 100 % potentiation events
     end
 
     methods (Access = protected)
@@ -104,9 +106,9 @@ classdef RB_STDP_EI_pool < EI_pool
 
                 fig = figure();
                 plot( ...
-                    nonzeros(tmp_non_potentiable_weight_t(1:pool.non_potentiable_i - 1)), ...
-                    (nonzeros(tmp_non_potentiable_got_t(1:pool.non_potentiable_i - 1)) ...
-                    ./ nonzeros(tmp_non_potentiable_required_t(1:pool.non_potentiable_i - 1))) * 100, ...
+                    tmp_non_potentiable_weight_t(1:pool.non_potentiable_i - 1), ...
+                    (tmp_non_potentiable_got_t(1:pool.non_potentiable_i - 1) ...
+                    ./ tmp_non_potentiable_required_t(1:pool.non_potentiable_i - 1)) * 100, ...
                     '.' ...
                     );
                 box off
@@ -121,9 +123,25 @@ classdef RB_STDP_EI_pool < EI_pool
                 end
 
                 fig = figure();
+                histogram( ...
+                    (tmp_non_potentiable_got_t(1:pool.non_potentiable_i - 1) ...
+                    ./ tmp_non_potentiable_required_t(1:pool.non_potentiable_i - 1)) * 100 ...
+                    );
+                box off
+                set(gca,'YScale','log')
+                xlabel("$f(\tau)$ / Resources availble (\%)", "Interpreter", "latex")
+                ylabel("Frequency")
+
+                fontsize(fig, pool.fontsize, "points")
+                drawnow
+                if export
+                    exportgraphics(gcf,'figures/non_potentiable_histogram.pdf','ContentType','vector')
+                end
+
+                fig = figure();
                 plot( ...
-                    nonzeros(tmp_non_potentiable_required_t(1:pool.non_potentiable_i - 1)), ...
-                    nonzeros(tmp_non_potentiable_got_t(1: pool.non_potentiable_i - 1)), ...
+                    tmp_non_potentiable_required_t(1:pool.non_potentiable_i - 1), ...
+                    tmp_non_potentiable_got_t(1: pool.non_potentiable_i - 1), ...
                     '.' ...
                     );
                 box off
@@ -138,14 +156,14 @@ classdef RB_STDP_EI_pool < EI_pool
 
                 fig = figure();
                 plot( ...
-                    nonzeros(tmp_non_potentiable_weight_t(1:pool.non_potentiable_i - 1)), ...
-                    (nonzeros(tmp_non_potentiable_got_t(1:pool.non_potentiable_i - 1)) ...
-                    ./ nonzeros(tmp_non_potentiable_weight_t(1:pool.non_potentiable_i - 1))) * 100, ...
+                    tmp_non_potentiable_weight_t(1:pool.non_potentiable_i - 1), ...
+                    (tmp_non_potentiable_got_t(1:pool.non_potentiable_i - 1) ...
+                    ./ tmp_non_potentiable_weight_t(1:pool.non_potentiable_i - 1)) * 100, ...
                     '.' ...
                     );
                 box off
                 xlabel("$w$", "Interpreter", "latex")
-                ylabel("Change in $w$ (%)", "Interpreter", "latex")
+                ylabel("$\Delta w$ (\%)", "Interpreter", "latex")
 
                 fontsize(fig, pool.fontsize, "points")
                 drawnow
@@ -276,14 +294,16 @@ classdef RB_STDP_EI_pool < EI_pool
             if pool.on_GPU
                 pool.STDP_traces = sparse(1, pool.N, "gpuArray"); % so keeps STDP update sparse
                 if pool.plasticity_type == "rbSTDP"
-                    pool.resource_pools = rand(1, pool.N) * 3.5;
-                    % pool.resource_pools = exp(randn(1, pool.N)) * 3.5;
+                    % pool.resource_pools = rand(1, pool.N) * 3.5;
+                    % pool.resource_pools = randn(1, pool.N) + 5;
+                    pool.resource_pools = exp(randn(1, pool.N)) * 3.5;
                 end
             else
                 pool.STDP_traces = sparse(1, pool.N); % ''
                 if pool.plasticity_type == "rbSTDP"
-                    pool.resource_pools = rand(1, pool.N) * 3.5;
-                    % pool.resource_pools = exp(randn(1, pool.N)) * 3.5;
+                    % pool.resource_pools = rand(1, pool.N) * 3.5;
+                    % pool.resource_pools = randn(1, pool.N) + 5;
+                    pool.resource_pools = exp(randn(1, pool.N)) * 3.5;
                 end
             end
 
@@ -353,7 +373,7 @@ classdef RB_STDP_EI_pool < EI_pool
                             for pre = 1:length(tmp_pre_ind)
                                 tmp_amount_req = pool.STDP_traces(tmp_pre_ind(pre)) * STDP_learning_rate_E2E;
                                 tmp_amount_got = 0.0;
-        
+
                                 % 1) If there are enough resources in neighbors, take from them ...
                                 for neighbor_offset = [-3, -2, -1, 1, 2, 3]
                                     neighbor = pre + neighbor_offset;
@@ -382,7 +402,7 @@ classdef RB_STDP_EI_pool < EI_pool
                                         end
                                     end
                                 end
-        
+
                                 % 2) If there are enough resources in the pool take them (if needed) ...
                                 if pool.resource_pools(tmp_post_ind(post)) > 0 && tmp_amount_got < tmp_amount_req
                                     tmp_amount_left = tmp_amount_req - tmp_amount_got;
@@ -404,22 +424,26 @@ classdef RB_STDP_EI_pool < EI_pool
                                     end
                                 end
 
-                                if pool.save_to_plot_non_potentiable && tmp_amount_req > 0 && ...
-                                        tmp_amount_req ~= tmp_amount_got
-                                    pool.non_potentiable_weight_t(pool.non_potentiable_i) = ...
-                                        pool.conn_weights_E2E(tmp_pre_ind(pre), tmp_post_ind(post));
-                                    pool.non_potentiable_required_t(pool.non_potentiable_i) = tmp_amount_req;
-                                    pool.non_potentiable_got_t(pool.non_potentiable_i) = tmp_amount_got;
-                                    pool.non_potentiable_i = pool.non_potentiable_i + 1;
-                                    if pool.non_potentiable_i > pool.non_potentiable_N
-                                        warning("Overflow non_potentiable arrays.")
+                                if pool.save_to_plot_non_potentiable 
+                                    if ~mod(pool.non_potentiable_n, pool.save_potentiation_N_period) && ...
+                                            tmp_amount_req > 0 % && tmp_amount_req ~= tmp_amount_got
+                                        pool.non_potentiable_weight_t(pool.non_potentiable_i) = ...
+                                            pool.conn_weights_E2E(tmp_pre_ind(pre), tmp_post_ind(post));
+                                        pool.non_potentiable_required_t(pool.non_potentiable_i) = tmp_amount_req;
+                                        pool.non_potentiable_got_t(pool.non_potentiable_i) = tmp_amount_got;
+                                        pool.non_potentiable_i = pool.non_potentiable_i + 1;
+                                        if pool.non_potentiable_i > pool.non_potentiable_N
+                                            warning("Overflow non_potentiable arrays.")
+                                        end
+                                        pool.non_potentiable_n = 1;
                                     end
+                                    pool.non_potentiable_n = pool.non_potentiable_n + 1;
                                 end
                             end
                         end
-        
+
                         pool.conn_weights_E2E = pool.conn_weights_E2E .* pool.conn_matrix_E2E;
-        
+
                         % LTD - normal additive LTD plus resources go in to the pool
                         tmp_weights_before = pool.conn_weights_E2E;
                         pool.conn_weights_E2E = pool.conn_weights_E2E + ...
@@ -432,12 +456,12 @@ classdef RB_STDP_EI_pool < EI_pool
                             ) ...
                             ) * STDP_learning_rate_E2E * 0.18 ...
                             );
-        
+
                         pool.conn_weights_E2E = pool.conn_weights_E2E .* pool.conn_matrix_E2E;
-        
+
                         % Limit weights
                         pool.conn_weights_E2E = max(pool.conn_weights_E2E, 0.0);
-        
+
                         % Update resource pools with any LTD-based additional resources
                         pool.resource_pools = pool.resource_pools + sum(tmp_weights_before - pool.conn_weights_E2E, 1);
                     case "addSTDP"
@@ -457,7 +481,7 @@ classdef RB_STDP_EI_pool < EI_pool
                             ) * STDP_learning_rate_E2E ...
                             );
                         pool.conn_weights_E2E = pool.conn_weights_E2E .* pool.conn_matrix_E2E;
-        
+
                         % Limit weights
                         pool.conn_weights_E2E = min(pool.conn_weights_E2E, pool.conn_max);
                         pool.conn_weights_E2E = max(pool.conn_weights_E2E, 0.0);
@@ -479,7 +503,7 @@ classdef RB_STDP_EI_pool < EI_pool
                             ) * STDP_learning_rate_E2E ...
                             );
                         pool.conn_weights_E2E = pool.conn_weights_E2E .* pool.conn_matrix_E2E;
-        
+
                         % Limit weights
                         pool.conn_weights_E2E = min(pool.conn_weights_E2E, pool.conn_max);
                         pool.conn_weights_E2E = max(pool.conn_weights_E2E, 0.0);

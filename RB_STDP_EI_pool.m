@@ -163,6 +163,8 @@ classdef RB_STDP_EI_pool < EI_pool
                     );
                 box off
                 xlabel("$w$", "Interpreter", "latex")
+                set(gca,'XScale','log')
+                xlim([0.01 max(tmp_non_potentiable_weight_t(1:pool.non_potentiable_i - 1))])
                 ylabel("$\Delta w$ (\%)", "Interpreter", "latex")
 
                 fontsize(fig, pool.fontsize, "points")

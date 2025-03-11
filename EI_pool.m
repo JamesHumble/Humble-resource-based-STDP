@@ -67,7 +67,7 @@ classdef EI_pool < handle
         refractoriness (1, :) double {mustBeFloat, mustBeNonnegative} = []
 
         % Plotting
-        fontsize double = 14;
+        fontsize double = 20;
 
         save_to_plot_synapses logical
         save_to_plot_Vm logical
@@ -427,12 +427,24 @@ classdef EI_pool < handle
 
                 fig = figure();
                 tmp_weights = reshape( ...
-                    pool.conn_weights_E2E_t, ...
+                    tmp_conn_weights_E2E_t, ...
                     pool.N * pool.N, ...
-                    size(pool.conn_weights_E2E_t, 3) ...
+                    size(tmp_conn_weights_E2E_t, 3) ...
                     );
-                tmp_weights( ~any(tmp_weights,2), : ) = [];
-                plot(tmp_weights(1:100, :)')
+                tmp_weights(~any(tmp_weights,2), : ) = [];
+                tmo_weights_NaN = tmp_weights;
+                tmo_weights_NaN(find(tmp_weights==0)) = NaN;
+                plot(tmo_weights_NaN(1:100, :)', "LineWidth", 2)
+                ylabel("$w$", "Interpreter", "latex")
+                tmp_mean_weights = zeros(size(tmp_weights, 2), 1);
+                for t = 1:size(tmp_weights, 2)
+                    tmp_mean_weights(t) = mean(nonzeros(tmp_weights(:, t)));
+                end
+                colororder({'m'})
+                yyaxis right
+                % plot(tmp_mean_weights', "magenta", "LineStyle", "--", "LineWidth", 2)
+                plot(tmp_mean_weights(1:784)', "magenta", "LineStyle", "--", "LineWidth", 2)
+                % plot(tmp_mean_weights(1:528)', "magenta", "LineStyle", "--", "LineWidth", 2)
                 box off
                 xlabel("Time (s)")
                 xlim([-0.5 pool.T / pool.save_weights_t_period])
@@ -441,7 +453,7 @@ classdef EI_pool < handle
                 % yticklabels([0])
                 % yticks([0])
                 % ylim([0 1])
-                ylabel("$w$", "Interpreter", "latex")
+                ylabel("$\bar{w}$", "Interpreter", "latex")
 
                 fontsize(fig, pool.fontsize, "points")
                 drawnow
@@ -452,9 +464,10 @@ classdef EI_pool < handle
                 fig = figure();
                 tmp_weights = tmp_conn_weights_E2E_t(:, :, end);
                 tmp_weights = tmp_weights(pool.conn_matrix_E2E);
+                % histogram(tmp_weights, 0:1/30:1, "FaceColor", "black")
                 histogram(tmp_weights, 30, "FaceColor", "black")
                 box off
-                xlabel("$w$", "Interpreter", "latex")
+                ylabel("$\bar{w}$", "Interpreter", "latex")
                 % xticklabels([0])
                 % xticks([0])
                 % xlim([0 1])
@@ -468,6 +481,72 @@ classdef EI_pool < handle
                 end
 
                 fig = figure();
+                tiledlayout(2, 1)
+
+                nexttile
+                tmp_weights_after_learning = tmp_conn_weights_E2E_t(:, :, 20 / pool.save_weights_t_period);
+                tmp_weights_end = tmp_conn_weights_E2E_t(:, :, end);
+                tmp_weights_change = tmp_weights_end - tmp_weights_after_learning;
+                tmp_weights_change = tmp_weights_change(pool.conn_matrix_E2E);
+                histogram(tmp_weights_change, 30, "FaceColor", "black")
+                box off
+                xlabel("$\Delta w$ after learning", "Interpreter", "latex")
+                % xlim([-2.5 2.5])
+                ylabel("Frequency")
+                set(gca, 'YScale', 'log')
+
+                nexttile
+                tmp_weights_after_learning = tmp_conn_weights_E2E_t(:, :, 20 / pool.save_weights_t_period);
+                tmp_weights_end = tmp_conn_weights_E2E_t(:, :, end);
+                tmp_weights_change = tmp_weights_end - tmp_weights_after_learning;
+                tmp_weights_change = tmp_weights_change(pool.conn_matrix_E2E);
+                histogram((tmp_weights_change ./ tmp_weights_after_learning(pool.conn_matrix_E2E)) * 100, 300, "FaceColor", "black")
+                box off
+                xlabel("$\Delta w$ after learning (\%)", "Interpreter", "latex")
+                xlim([-1000 5000])
+                ylabel("Frequency")
+                set(gca, 'YScale', 'log')
+
+                fontsize(fig, pool.fontsize, "points")
+                drawnow
+                if export
+                    exportgraphics(gcf,'figures/weights_E2E_change_histogram_neurodegeneration.pdf','ContentType','vector')
+                end
+
+                fig = figure();
+                tiledlayout(2, 1)
+
+                nexttile
+                tmp_weights_after_learning = tmp_conn_weights_E2E_t(:, :, 40 / pool.save_weights_t_period);
+                tmp_weights_end = tmp_conn_weights_E2E_t(:, :, end);
+                tmp_weights_change = tmp_weights_end - tmp_weights_after_learning;
+                tmp_weights_change = tmp_weights_change(pool.conn_matrix_E2E);
+                histogram(tmp_weights_change, 30, "FaceColor", "black")
+                box off
+                xlabel("$\Delta w$ after synaptic degeneration", "Interpreter", "latex")
+                % xlim([-2.5 2.5])
+                ylabel("Frequency")
+                set(gca, 'YScale', 'log')
+
+                nexttile
+                tmp_weights_after_learning = tmp_conn_weights_E2E_t(:, :, 40 / pool.save_weights_t_period);
+                tmp_weights_end = tmp_conn_weights_E2E_t(:, :, end);
+                tmp_weights_change = tmp_weights_end - tmp_weights_after_learning;
+                tmp_weights_change = tmp_weights_change(pool.conn_matrix_E2E);
+                histogram((tmp_weights_change ./ tmp_weights_after_learning(pool.conn_matrix_E2E)) * 100, 30, "FaceColor", "black")
+                box off
+                xlabel("$\Delta w$ after synaptic degeneration (\%)", "Interpreter", "latex")
+                % xlim([-1000 5000])
+                ylabel("Frequency")
+                set(gca, 'YScale', 'log')
+
+                fontsize(fig, pool.fontsize, "points")
+                drawnow
+                if export
+                    exportgraphics(gcf,'figures/weights_E2E_change_histogram_synaptic_degeneration.pdf','ContentType','vector')
+                end
+
+                fig = figure();
                 tmp_mean_diffs = zeros(pool.N, size(tmp_conn_weights_E2E_t, 3));
                 for t = 1:size(tmp_conn_weights_E2E_t, 3)
                     for post = 1:pool.N
@@ -478,7 +557,7 @@ classdef EI_pool < handle
                     end
                 end
 
-                plot(mean(tmp_mean_diffs, "omitnan"), "black");
+                plot(mean(tmp_mean_diffs, "omitnan"), "black", "LineWidth", 2);
                 xlabel("Time (s)")
                 xlim([-0.5 pool.T / pool.save_weights_t_period])
                 xticks(0:10.0 / pool.save_weights_t_period:pool.T / pool.save_weights_t_period)
@@ -512,8 +591,8 @@ classdef EI_pool < handle
                 axis xy
                 xlabel("Time (s)")
                 xlim([-0.5 pool.T / pool.save_Hz_t_period])
-                xticks(0:100.0 / pool.save_Hz_t_period:pool.T / pool.save_Hz_t_period)
-                xticklabels(0:100:pool.T)
+                xticks(0:10.0 / pool.save_Hz_t_period:pool.T / pool.save_Hz_t_period)
+                xticklabels(0:10:pool.T)
                 ylim([0 pool.N])
                 ylabel("Neuron")
                 yticklabels([])
@@ -562,37 +641,36 @@ classdef EI_pool < handle
                 end
 
                 tmp_Hz_t_E = tmp_Hz_t(:, 1:pool.N);
-                tmp_selected = tmp_Hz_t_E > 50;
+                tmp_selected = tmp_Hz_t_E > 100;
                 [~, tmp_i] = sortrows(tmp_selected', 1:size(tmp_Hz_t_E, 1), "descend");
 
                 fig = figure();
                 imagesc(tmp_Hz_t_E(:, tmp_i)')
-                title("Sorted excitatory Hz")
                 axis xy
                 xlabel("Time (s)")
                 xlim([-0.5 pool.T / pool.save_Hz_t_period])
                 xticks(0:10.0 / pool.save_resource_pools_t_period:pool.T / pool.save_resource_pools_t_period)
                 xticklabels(0:10:pool.T)
-                ylabel("Excitatory neuron (sorted > 25 Hz)")
+                ylabel("Neuron (sorted > 100 Hz)")
                 yticks([]);
                 colormap hot
                 cb = colorbar();
                 ylabel(cb, "Firing rate (Hz)")
 
-                if ~isempty(tmp_stimulation_t)
-                    hold on
-                    scatter( ...
-                        tmp_stimulation_x, ...
-                        ones(length(tmp_stimulation_x)), ...
-                        49, ...
-                        'm', ...
-                        "square", ...
-                        "filled", ...
-                        "HandleVisibility", ...
-                        "off" ...
-                        )
-                    hold off
-                end
+                % if ~isempty(tmp_stimulation_t)
+                %     hold on
+                %     scatter( ...
+                %         tmp_stimulation_x, ...
+                %         ones(length(tmp_stimulation_x)), ...
+                %         49, ...
+                %         'm', ...
+                %         "square", ...
+                %         "filled", ...
+                %         "HandleVisibility", ...
+                %         "off" ...
+                %         )
+                %     hold off
+                % end
                 fontsize(fig, pool.fontsize, "points")
                 drawnow
                 if export
@@ -643,6 +721,23 @@ classdef EI_pool < handle
                 if export
                     exportgraphics(gcf,'figures/Hz_means.pdf','ContentType','vector')
                 end
+
+                fig = figure();
+                tmp_Hz_after_learning = tmp_Hz_t(20 / pool.save_Hz_t_period, :);
+                tmp_Hz_end = tmp_Hz_t(end, :);
+                tmp_Hz_change = tmp_Hz_end - tmp_Hz_after_learning;
+                histogram((tmp_Hz_change ./ tmp_Hz_after_learning) * 100, 30, "FaceColor", "black")
+                box off
+                xlabel("$\Delta$ firing rate after learning (\%)", "Interpreter", "latex")
+                % xlim([-50 50])
+                ylabel("Frequency")
+                set(gca, 'YScale', 'log')
+
+                fontsize(fig, pool.fontsize, "points")
+                drawnow
+                if export
+                    exportgraphics(gcf,'figures/Hz_change_histogram.pdf','ContentType','vector')
+                end
             end
         end
 
@@ -655,8 +750,8 @@ classdef EI_pool < handle
 
             if pool.b_plot_digraph
                 tmp_conn_weights_E2E_t = gather(pool.conn_weights_E2E_t);
-                tmp_threshold_weights = tmp_conn_weights_E2E_t(:, :, end);
-                tmp_threshold_weights = mean(nonzeros(tmp_threshold_weights(:)));
+                tmp_threshold_weights = tmp_conn_weights_E2E_t(:, :, 20 / pool.save_weights_t_period);
+                tmp_threshold_weights = quantile(nonzeros(tmp_threshold_weights(:)), 0.95);
 
                 fig = figure();
                 % Graph
@@ -669,11 +764,12 @@ classdef EI_pool < handle
                     end
                 end
                 % Plot
-                isolated_nodes = find(indegree(tmp_G_E2E) + outdegree(tmp_G_E2E) == 0);
-                tmp_G_E2E = rmnode(tmp_G_E2E, isolated_nodes);
-                h = plot(tmp_G_E2E);%, "Layout", "circle");
+                % isolated_nodes = find(indegree(tmp_G_E2E) + outdegree(tmp_G_E2E) == 0);
+                % tmp_G_E2E = rmnode(tmp_G_E2E, isolated_nodes);
+                h = plot(tmp_G_E2E, "black", "Layout", "circle");
                 box off
                 axis off
+                pbaspect([1 1 1])
                 % title("> mean of E➔E weights at end of simulation")
                 tmp_G_E2E.Edges.LWidths = 0.00001 + tmp_G_E2E.Edges.Weight/max(tmp_G_E2E.Edges.Weight) * 5;
                 h.LineWidth = tmp_G_E2E.Edges.LWidths;
@@ -682,7 +778,39 @@ classdef EI_pool < handle
                 fontsize(fig, pool.fontsize, "points")
                 drawnow
                 if export
-                    exportgraphics(gcf,'figures/digraph.pdf','ContentType','vector')
+                    exportgraphics(gcf,'figures/digraph_after_learning.pdf','ContentType','vector')
+                end
+
+                tmp_conn_weights_E2E_t = gather(pool.conn_weights_E2E_t);
+                tmp_threshold_weights = tmp_conn_weights_E2E_t(:, :, end);
+                tmp_threshold_weights = quantile(nonzeros(tmp_threshold_weights(:)), 0.95);
+
+                fig = figure();
+                % Graph
+                tmp_G_E2E = digraph();
+                for pre = 1:pool.N
+                    for post = 1:pool.N
+                        if tmp_conn_weights_E2E_t(pre, post, end) > tmp_threshold_weights
+                            tmp_G_E2E = addedge(tmp_G_E2E, pre, post, tmp_conn_weights_E2E_t(pre, post, end));
+                        end
+                    end
+                end
+                % Plot
+                % isolated_nodes = find(indegree(tmp_G_E2E) + outdegree(tmp_G_E2E) == 0);
+                % tmp_G_E2E = rmnode(tmp_G_E2E, isolated_nodes);
+                h = plot(tmp_G_E2E, "black", "Layout", "circle");
+                box off
+                axis off
+                pbaspect([1 1 1])
+                % title("> mean of E➔E weights at end of simulation")
+                tmp_G_E2E.Edges.LWidths = 0.00001 + tmp_G_E2E.Edges.Weight/max(tmp_G_E2E.Edges.Weight) * 5;
+                h.LineWidth = tmp_G_E2E.Edges.LWidths;
+                h.EdgeAlpha = 0.2;
+
+                fontsize(fig, pool.fontsize, "points")
+                drawnow
+                if export
+                    exportgraphics(gcf,'figures/digraph_end.pdf','ContentType','vector')
                 end
 
                 tmp_threshold_weights = 0;
@@ -705,8 +833,8 @@ classdef EI_pool < handle
                             end
                         end
                     end
-                    isolated_nodes = find(indegree(tmp_G_E2E) + outdegree(tmp_G_E2E) == 0);
-                    tmp_G_E2E = rmnode(tmp_G_E2E, isolated_nodes);
+                    % isolated_nodes = find(indegree(tmp_G_E2E) + outdegree(tmp_G_E2E) == 0);
+                    % tmp_G_E2E = rmnode(tmp_G_E2E, isolated_nodes);
                     tmp_functional_weights = tmp_conn_weights_E2E_t(:, :, t);
                     tmp_functional_weights = tmp_functional_weights( ...
                         tmp_functional_weights > tmp_threshold_weights ...
@@ -769,7 +897,7 @@ classdef EI_pool < handle
                         "Importance", ...
                         tmp_functional_weights, ...
                         "MaxIterations", ...
-                        5000 ...
+                        500000 ...
                         ));
                     % Authorities
                     tmp_authorities(t) = mean( ...
@@ -779,7 +907,7 @@ classdef EI_pool < handle
                         "Importance", ...
                         tmp_functional_weights, ...
                         "MaxIterations", ...
-                        5000 ...
+                        500000 ...
                         ));
                 end
 
@@ -789,28 +917,28 @@ classdef EI_pool < handle
                 % title(tiledlayout, "Graph measures (> mean of E➔E weights at end of simulation)")
 
                 nexttile
-                plot(tmp_in_degree)
+                plot(tmp_in_degree, "black", "LineWidth", 2)
                 box off
                 xlabel("Time")
                 xticks([])
                 ylabel("In degree")
 
                 nexttile
-                plot(tmp_out_degree)
+                plot(tmp_out_degree, "black", "LineWidth", 2)
                 box off
                 xlabel("Time")
                 xticks([])
                 ylabel("Out degree")
 
                 nexttile
-                plot(tmp_in_closeness)
+                plot(tmp_in_closeness, "black", "LineWidth", 2)
                 box off
                 xlabel("Time")
                 xticks([])
                 ylabel("In closeness")
 
                 nexttile
-                plot(tmp_out_closeness)
+                plot(tmp_out_closeness, "black", "LineWidth", 2)
                 box off
                 xlabel("Time")
                 xticks([])

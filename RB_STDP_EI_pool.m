@@ -5,6 +5,7 @@ classdef RB_STDP_EI_pool < EI_pool
     properties (Access = public)
         % Parameters
         input_stop_T double {mustBeFloat, mustBePositive} = 20.0 % sec
+        
         STDP_tau double {mustBeFloat, mustBePositive} = 0.020 % sec
 
         AD logical = false
@@ -129,7 +130,7 @@ classdef RB_STDP_EI_pool < EI_pool
                     );
                 box off
                 xlabel("$w$", "Interpreter", "latex")
-                ylabel("$f(\tau)$ / Resources availble (\%)", "Interpreter", "latex")
+                ylabel("$f(\tau)$ / Resources available (\%)", "Interpreter", "latex")
                 ylim([0 100])
 
                 fontsize(fig, pool.fontsize, "points")
@@ -148,7 +149,7 @@ classdef RB_STDP_EI_pool < EI_pool
                     );
                 box off
                 set(gca,'YScale','log')
-                xlabel("$f(\tau)$ / Resources availble (\%)", "Interpreter", "latex")
+                xlabel("$f(\tau)$ / Resources available (\%)", "Interpreter", "latex")
                 ylabel("Frequency")
 
                 fontsize(fig, pool.fontsize, "points")

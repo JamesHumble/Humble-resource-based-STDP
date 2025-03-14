@@ -442,8 +442,8 @@ classdef EI_pool < handle
                 end
                 colororder({'m'})
                 yyaxis right
-                % plot(tmp_mean_weights', "magenta", "LineStyle", "--", "LineWidth", 2)
-                plot(tmp_mean_weights(1:784)', "magenta", "LineStyle", "--", "LineWidth", 2)
+                plot(tmp_mean_weights', "magenta", "LineStyle", "--", "LineWidth", 2)
+                % plot(tmp_mean_weights(1:784)', "magenta", "LineStyle", "--", "LineWidth", 2)
                 % plot(tmp_mean_weights(1:528)', "magenta", "LineStyle", "--", "LineWidth", 2)
                 box off
                 xlabel("Time (s)")

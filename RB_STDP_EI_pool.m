@@ -20,6 +20,8 @@ classdef RB_STDP_EI_pool < EI_pool
         resource_pools (1, :) {mustBeFloat, mustBeNonnegative} = [] % a.u.
         resource_pools_tau double {mustBeFloat, mustBeNonnegative} = 10.0 % sec
 
+        Gutig_mu double {mustBeFloat, mustBeNonnegative} % [0, 1]
+
         % Plotting
         save_to_plot_STDP_traces logical
         save_to_plot_resource_pools logical
@@ -365,7 +367,8 @@ classdef RB_STDP_EI_pool < EI_pool
                 save_to_plot_non_potentiable, ...
                 save_to_plot_dependence, ...
                 AD, ...
-                save_to_plot_AD ...
+                save_to_plot_AD, ...
+                Gutig_mu ...
                 )
             arguments
                 T double {mustBeFloat, mustBePositive}
@@ -390,6 +393,7 @@ classdef RB_STDP_EI_pool < EI_pool
                 save_to_plot_dependence logical = false
                 AD logical = false
                 save_to_plot_AD logical = false
+                Gutig_mu double {mustBeFloat, mustBeNonnegative} = 1.0
             end
             % RB_STDP_EI_pool Construct an instance of an EI pool (on the GPU)
             pool = pool@EI_pool( ...
@@ -420,6 +424,8 @@ classdef RB_STDP_EI_pool < EI_pool
             pool.save_to_plot_non_potentiable = save_to_plot_non_potentiable;
             pool.save_to_plot_dependence = save_to_plot_dependence;
             pool.save_to_plot_AD = save_to_plot_AD;
+
+            pool.Gutig_mu = Gutig_mu;
 
             % General
             % none
@@ -650,6 +656,138 @@ classdef RB_STDP_EI_pool < EI_pool
                             reshape(pool.spikes_delayed_E2E(:, 1), pool.N, pool.N) ...
                             .* repmat(pool.STDP_traces(1:pool.N), pool.N, 1)' ...
                             .* pool.conn_weights_E2E ...
+                            ) ...
+                            ) * STDP_learning_rate_E2E * 0.18 ...
+                            );
+
+                        pool.conn_weights_E2E = pool.conn_weights_E2E .* pool.conn_matrix_E2E;
+
+                        % Limit weights
+                        pool.conn_weights_E2E = max(pool.conn_weights_E2E, 0.0);
+
+                        % Save weight dependence
+                        if pool.save_to_plot_dependence
+                            if ~mod(pool.dependence_n, pool.save_dependence_N_period)
+                                for pre = 1:pool.N
+                                    for post = 1:pool.N
+                                        if pool.conn_matrix_E2E(pre, post) && ...
+                                                pool.conn_weights_E2E(pre, post) ~= tmp_weights_before(pre, post)
+                                            pool.dependence_weight_t(pool.dependence_i) = ...
+                                                tmp_weights_before(pre, post);
+                                            pool.dependence_t(pool.dependence_i) = ...
+                                                pool.conn_weights_E2E(pre, post) - tmp_weights_before(pre, post);
+                                            pool.dependence_i = pool.dependence_i + 1;
+                                            if pool.dependence_i > pool.dependence_N
+                                                warning("Overflow dependence array.")
+                                            end
+                                            pool.dependence_n = 1;
+                                        end
+                                    end
+                                end
+                            end
+                            pool.dependence_n = pool.dependence_n + 1;
+                        end
+
+                        % Update resource pools with any LTD-based additional resources
+                        pool.resource_pools = pool.resource_pools + sum(tmp_weights_before - pool.conn_weights_E2E, 1);
+                    case "rbSTDP_Gutig"
+                        % LTP - if post spike, ...
+                        tmp_post_ind = find(pool.spikes(1:pool.N));
+                        for post = 1:length(tmp_post_ind)
+                            % ... take resources from:
+                            %   1) nearby pre connections (assuming they are equidistant) and
+                            %   2) the pool (if necessary)
+                            tmp_pre_ind = find(pool.conn_matrix_E2E(1:pool.N, tmp_post_ind(post)));
+                            tmp_pre_ind_N = length(tmp_pre_ind);
+                            for pre = 1:length(tmp_pre_ind)
+                                tmp_amount_req = pool.STDP_traces(tmp_pre_ind(pre)) * STDP_learning_rate_E2E ...
+                                    * ((20 - pool.conn_weights_E2E(pre, post)) ^ pool.Gutig_mu);
+                                tmp_amount_got = 0.0;
+                                if ~isreal(tmp_amount_req) % weight is larger than 20
+                                    tmp_amount_req = 0;
+                                end
+
+                                % 1) If there are enough resources in neighbors, take from them ...
+                                for neighbor_offset = [-3, -2, -1, 1, 2, 3]
+                                    neighbor = pre + neighbor_offset;
+                                    % Check each neighbor - only if a valid neighbor
+                                    if neighbor >= 1 && neighbor <= tmp_pre_ind_N
+                                        tmp_adj_amount_req = tmp_amount_req ...
+                                            * pool.resource_neighbor_sharing_profile(abs(neighbor_offset));
+                                        if pool.conn_weights_E2E(tmp_pre_ind(neighbor), tmp_post_ind(post)) ...
+                                                >= tmp_adj_amount_req
+                                            % If there is enough, take it ...
+                                            pool.conn_weights_E2E(tmp_pre_ind(pre), tmp_post_ind(post)) = ...
+                                                pool.conn_weights_E2E(tmp_pre_ind(pre), tmp_post_ind(post)) + ...
+                                                tmp_adj_amount_req;
+                                            pool.conn_weights_E2E(tmp_pre_ind(neighbor), tmp_post_ind(post)) = ...
+                                                pool.conn_weights_E2E(tmp_pre_ind(neighbor), tmp_post_ind(post)) - ...
+                                                tmp_adj_amount_req;
+                                            tmp_amount_got = tmp_amount_got + tmp_adj_amount_req;
+                                        else
+                                            % ... if not, take what there is
+                                            pool.conn_weights_E2E(tmp_pre_ind(pre), tmp_post_ind(post)) = ...
+                                                pool.conn_weights_E2E(tmp_pre_ind(pre), tmp_post_ind(post)) + ...
+                                                pool.conn_weights_E2E(tmp_pre_ind(neighbor), tmp_post_ind(post));
+                                            tmp_amount_got = tmp_amount_got + ...
+                                                pool.conn_weights_E2E(tmp_pre_ind(neighbor), tmp_post_ind(post));
+                                            pool.conn_weights_E2E(tmp_pre_ind(neighbor), tmp_post_ind(post)) = 0.0;
+                                        end
+                                    end
+                                end
+
+                                % 2) If there are enough resources in the pool take them (if needed) ...
+                                if pool.resource_pools(tmp_post_ind(post)) > 0 && tmp_amount_got < tmp_amount_req
+                                    tmp_amount_left = tmp_amount_req - tmp_amount_got;
+                                    if pool.resource_pools(tmp_post_ind(post)) >= tmp_amount_left
+                                        pool.conn_weights_E2E(tmp_pre_ind(pre), tmp_post_ind(post)) = ...
+                                            pool.conn_weights_E2E(tmp_pre_ind(pre), tmp_post_ind(post)) ...
+                                            + tmp_amount_left;
+                                        tmp_amount_got = tmp_amount_got + tmp_amount_left;
+                                        pool.resource_pools(tmp_post_ind(post)) = ...
+                                            pool.resource_pools(tmp_post_ind(post)) - tmp_amount_left;
+                                    else
+                                        % ... else, take what there is
+                                        pool.conn_weights_E2E(tmp_pre_ind(pre), tmp_post_ind(post)) = ...
+                                            pool.conn_weights_E2E(tmp_pre_ind(pre), tmp_post_ind(post)) ...
+                                            + pool.resource_pools(tmp_post_ind(post));
+                                        tmp_amount_got = tmp_amount_got + ...
+                                            pool.resource_pools(tmp_post_ind(post));
+                                        pool.resource_pools(tmp_post_ind(post)) = 0.0;
+                                    end
+                                end
+
+                                % Save non-potentiation
+                                if pool.save_to_plot_non_potentiable 
+                                    if ~mod(pool.non_potentiable_n, pool.save_potentiation_N_period) && ...
+                                            tmp_amount_req > 0 % && tmp_amount_req ~= tmp_amount_got
+                                        pool.non_potentiable_weight_t(pool.non_potentiable_i) = ...
+                                            pool.conn_weights_E2E(tmp_pre_ind(pre), tmp_post_ind(post));
+                                        pool.non_potentiable_required_t(pool.non_potentiable_i) = tmp_amount_req;
+                                        pool.non_potentiable_got_t(pool.non_potentiable_i) = tmp_amount_got;
+                                        pool.non_potentiable_i = pool.non_potentiable_i + 1;
+                                        if pool.non_potentiable_i > pool.non_potentiable_N
+                                            warning("Overflow non_potentiable arrays.")
+                                        end
+                                        pool.non_potentiable_n = 1;
+                                    end
+                                    pool.non_potentiable_n = pool.non_potentiable_n + 1;
+                                end
+                            end
+                        end
+
+                        pool.conn_weights_E2E = pool.conn_weights_E2E .* pool.conn_matrix_E2E;
+
+                        % LTD - normal additive LTD plus resources go in to the pool
+                        tmp_weights_before = pool.conn_weights_E2E;
+                        pool.conn_weights_E2E = pool.conn_weights_E2E + ...
+                            ( ...
+                            ( ...
+                            - ( ...
+                            ... % post-pre LTD - if pre spike, update with the post STDP traces
+                            reshape(pool.spikes_delayed_E2E(:, 1), pool.N, pool.N) ...
+                            .* repmat(pool.STDP_traces(1:pool.N), pool.N, 1)' ...
+                            .* (pool.conn_weights_E2E .^ pool.Gutig_mu) ...
                             ) ...
                             ) * STDP_learning_rate_E2E * 0.18 ...
                             );
